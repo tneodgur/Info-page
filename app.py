@@ -6,6 +6,15 @@ import json
 from google import genai
 from google.genai.errors import APIError
 
+def build_api_history():
+    api_history = []
+    for m in st.session_state.messages:
+        if m["role"] == "system":
+            continue  # system은 빼기
+        role = "model" if m["role"] == "assistant" else "user"
+        api_history.append({"role": role, "parts": m["parts"]})
+    return api_history
+    
 # ─────────────────────────────────────────────────────────────
 # 0) Streamlit 기본 설정 (가장 먼저 호출 권장)
 # ─────────────────────────────────────────────────────────────
@@ -202,16 +211,20 @@ def main_chat_loop():
             return
 
         # 최근 3턴(6메시지)만 유지 + 시스템 프롬프트
-        history_to_send = st.session_state.messages[:]
-        if len(history_to_send) > 7:
-            history_to_send = [history_to_send[0]] + history_to_send[-6:]
-            st.sidebar.warning("대화가 길어 최근 6개 메시지(3턴)만 API에 전송됩니다.")
+        history_to_send = build_api_history()
+
+# 최근 6개 메시지만 유지
+if len(history_to_send) > 6:
+    history_to_send = history_to_send[-6:]
 
         with st.spinner(f"({st.session_state.model_name}) 모델이 답변을 생성하는 중..."):
             response = retry_api_call(
-                client=client,
-                model=st.session_state.model_name,
-                contents=history_to_send,
+    client=client,
+    model=st.session_state.model_name,
+    contents=history_to_send,
+    system_instruction=SYSTEM_INSTRUCTION_PARTS[0]["text"]
+)
+
             )
 
         if response and getattr(response, "candidates", None):
@@ -250,4 +263,5 @@ if __name__ == "__main__":
     # 최초 실행 시, 시스템 프롬프트를 CSV에만 기록(대화 히스토리는 이미 존재)
     if st.session_state.enable_logging:
         log_message("system", SYSTEM_INSTRUCTION_PARTS[0]["text"])
+
     main_chat_loop()
